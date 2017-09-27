@@ -169,20 +169,24 @@ Public Class FormMain
                 Thread.Sleep(250)
             Else
                 If selectedScanner.Scanner.IsFingerPresent Then
-                    selectedScanner.Scanner.SetDiodesStatus(DiodesStatus.turn_on_permanent, DiodesStatus.turn_off)
                     Me.Invoke(New MethodInvoker(Sub() UpdateFrame()))
-                    Thread.Sleep(30 / 2)
+                    Thread.Sleep(15)
 
                     validatorCounter += 1
-                    If validatorCounter >= 4 Then
-                        Me.Invoke(New MethodInvoker(Sub() SearchFingerPrint()))
-                        validatorCounter = 0
+                    If validatorCounter >= 2 Then
+                        Dim found As Boolean
+                        Me.Invoke(New MethodInvoker(Sub() found = SearchFingerPrint()))
+                        If found Then
+                            validatorCounter = 0
+                            selectedScanner.Scanner.SetDiodesStatus(DiodesStatus.turn_on_permanent, DiodesStatus.turn_off)
+                            Thread.Sleep(3000)
+                        End If
                     End If
                 Else
                     selectedScanner.Scanner.SetDiodesStatus(DiodesStatus.turn_off, DiodesStatus.turn_on_permanent)
                     PictureBoxFingerprint.Image = emptyBitmap
                     validatorCounter = 0
-                    Thread.Sleep(100)
+                    Thread.Sleep(120)
                 End If
             End If
         Loop Until cancelAllThreads
@@ -281,7 +285,7 @@ Public Class FormMain
         End Select
     End Function
 
-    Private Sub SearchFingerPrint()
+    Private Function SearchFingerPrint() As Boolean
         Dim srcFeatures As JYFeatures
         Dim trgFeatures As JYFeatures
         Dim result As New List(Of MinutiaPair)
@@ -289,14 +293,18 @@ Public Class FormMain
         Dim score As Double
         Dim sw As New Stopwatch()
 
+        Static isBusy As Boolean
+        If isBusy Then Return False
+        isBusy = True
+
         sw.Start()
 
-        selectedScanner.Scanner.SetDiodesStatus(DiodesStatus.turn_on_permanent, DiodesStatus.turn_off)
+        selectedScanner.Scanner.SetDiodesStatus(DiodesStatus.turn_off, DiodesStatus.turn_on_period)
         LabelInfo.Visible = True
         TextBoxName.Text = ""
         Application.DoEvents()
 
-        Dim img As Bitmap = PictureBoxFingerprint.Image.Clone()
+        Dim img As Bitmap = CType(PictureBoxFingerprint.Image.Clone(), Bitmap)
         Dim bestMatch As Double = 0
         Dim name As String = ""
         Try
@@ -307,7 +315,7 @@ Public Class FormMain
 
                 score = matcher.Match(trgFeatures, srcFeatures, result)
 
-                If score >= 30 AndAlso score > bestMatch Then
+                If score >= 40 AndAlso score > bestMatch Then
                     bestMatch = score
                     name = String.Format("{0} [{1:F2}%]", file.Name.Replace(file.Extension, ""), score)
                 End If
@@ -317,10 +325,15 @@ Public Class FormMain
 
             If TextBoxName.Text = "" Then TextBoxName.Text = "Not Found!"
         Catch ex As Exception
+            Debug.WriteLine(ex.ToString())
             TextBoxName.Text = "Error!"
         End Try
 
         LabelInfo.Visible = False
         LabelTime.Text = String.Format("{0:N0}ms", sw.ElapsedMilliseconds)
-    End Sub
+
+        isBusy = False
+
+        Return bestMatch <> 0
+    End Function
 End Class
